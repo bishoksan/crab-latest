@@ -204,6 +204,20 @@ namespace ikos {
     bool is_constant() const {
       return (this->_map->size() == 0);
     }
+    
+ 
+    bool is_variable() const {
+            if (this->is_constant()) {
+                return false;
+            }
+            if ((this->constant() == 0) && (this->size() == 1)) {
+                typename linear_expression_t::iterator it = this->begin();
+                Number coeff = it->first;
+                if (coeff == 1)
+                    return true;
+            }
+            return false;
+    }  
 
     Number constant() const {
       return this->_cst;
