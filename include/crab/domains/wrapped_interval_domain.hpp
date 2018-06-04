@@ -2730,10 +2730,8 @@ namespace crab {
                     _product.second() -= v;
                     if (signedness == SIGNED) {
                         _product.second() += _product.first().w_interval_to_lcs(v, true);
-                        CRAB_ERROR("========injection occured=============");
                     } else {
                         _product.second() += _product.first().w_interval_to_lcs(v, false);
-                        CRAB_ERROR("========injection occured=============");
                     }
                     CRAB_LOG("wrapped-num",
                             crab::outs() << "\t" << v << " may overflow!\n";);
