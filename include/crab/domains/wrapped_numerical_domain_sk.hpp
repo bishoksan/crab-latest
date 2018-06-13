@@ -394,52 +394,6 @@ namespace crab {
                 return bound_vec;
             }
 
-            /*always overflows for Simon and King*/
-            bool expr_overflow(linear_expression_t lhs, const Domain1& first, bool is_signed) {
-                return true;
-            }
-
-            /*return true if overflows, this is a generic method*/
-            /*
-             * 
-               bool expr_overflow(linear_expression_t lhs, const Domain1& first, bool is_signed) {
-                //should not modify first, take a copy
-                Domain1 first_ref = first;
-                variable_t var_new = create_fresh_wrapped_int_var(lhs);
-                first_ref += (lhs == var_new);
-                //return true; //expressions are always wrapped
-                return var_overflow(var_new, first_ref, is_signed);
-            }
-            bool var_overflow(variable_t var, Domain1& first, bool is_signed) {
-                if (first.is_bottom()) {
-                    return false; //assume nothing will overflow
-                }
-                wrapped_interval_limit_value limit_val_domain = first.get_limit_value(var);
-                if (limit_val_domain.is_bottom()) {
-                    return false; //if bottom no overflow
-                }
-                if (limit_val_domain.is_top()) {
-                    return true;
-                }
-
-                if (limit_val_domain.is_crossing_signed_limit() && is_signed) {
-                    return true;
-                }
-
-                if (limit_val_domain.is_crossing_unsigned_limit() && !is_signed) {
-                    return true;
-                }
-                return false;
-            }
-             */
-
-            /*method tuned for Simon and King, it always overflows*/
-            bool var_overflow(variable_t var, Domain1& first, bool is_signed) {
-                if (first.is_bottom()) {
-                    return false; //assume nothing will overflow
-                }
-                return false;
-            }
 
             /*checks if there is an overflow before a branching condition, if so calls a wrapping operator.
              * csts: is a branching condition
@@ -503,13 +457,8 @@ namespace crab {
              */
             std::vector<Domain2> cond_wrap_exprs_var(variable_t v, Domain2& second, bool is_signed) {
                 std::vector<Domain2> dom2_elem;
-                if (var_overflow(v, first, is_signed)) {
-                    //CRAB_WARN("var ", v, " overflew: cond_wrap_exprs_var");
-                    //call wrapping since it overflows
-                    dom2_elem = wrap_var_SK_wo_adding_constrs(v, second, is_signed);
-                } else {
-                    dom2_elem.push_back(second);
-                }
+                dom2_elem = wrap_var_SK_wo_adding_constrs(v, second, is_signed);
+
                 return dom2_elem;
             }
 
@@ -974,9 +923,8 @@ namespace crab {
              * */
 
             void safen(const variable_t& v, bool is_signed) {
-                if (var_overflow(v, _product.first(), is_signed)) {
                     _product.second() -= v;
-                }
+                
             }
 
             void operator-=(variable_t v) {
