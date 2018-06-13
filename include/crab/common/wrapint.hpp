@@ -157,6 +157,20 @@ public:
   static wrapint get_unsigned_min(bitwidth_t w) {
     return wrapint(0, w);
   }
+    
+  static uint64_t get_mod(bitwidth_t bit) {
+        uint64_t mod;
+        assert (bit <= 64);
+        switch (bit){
+            case 8:  mod = mod_8;  break;
+            case 16: mod = mod_16; break;
+            case 32: mod = mod_32; break;
+            case 64: break;
+            default: mod = 1 << bit;
+        }
+        return mod;
+    }
+  
   
 public:
 
