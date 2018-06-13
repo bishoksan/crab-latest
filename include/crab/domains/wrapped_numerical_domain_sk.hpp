@@ -450,7 +450,7 @@ namespace crab {
              * 
              * TODO: now the constraints are in  E <=n form, it needs extension to E1<= E2, wrapping of constant on rhs
              */
-            void wrap_cond_exprs(Domain1& first, Domain2& second, linear_constraint_t branch_cond, bool is_signed) {
+            void wrap_cond_exprs(Domain2& second, linear_constraint_t branch_cond, bool is_signed) {
                 if (second.is_bottom()) return;
                 number_t rhs_const = branch_cond.constant();
                 //Given x+y<=1, expr is x+y-1 and const is 1
@@ -465,10 +465,10 @@ namespace crab {
                 }
                 if (is_variable_lhs) {
                     //CRAB_WARN(lhs_branch_cond, " is var ");
-                    cond_wrap_var_SK(*(lhs_branch_cond.get_variable()), first, second, new_lcs, is_signed);
+                    cond_wrap_var_SK(*(lhs_branch_cond.get_variable()), second, new_lcs, is_signed);
                 } else {
                     //CRAB_WARN(lhs_branch_cond, " is expr ");
-                    cond_wrap_expr_SK(new_lcs, first, second, is_signed);
+                    cond_wrap_expr_SK(new_lcs, second, is_signed);
                 }
             }
 
@@ -495,21 +495,13 @@ namespace crab {
              checks if a wrapping is necessary for this variable, if so,  do the necessary wrapping
              */
             void cond_wrap_var_SK(variable_t v, Domain1& first, Domain2& second, linear_constraint_t csts, bool is_signed) {
-                if (var_overflow(v, first, is_signed)) {
-                    //CRAB_WARN("var ", v, " overflew");
-                    //call wrapping since it overflows
-                    //wrap_a_var_based_on_wrapped_interval(v, first, second, csts, is_signed);
-                    wrap_single_var_SK(v, second, csts, is_signed);
-                } else {
-                    //else it is safe to add constraints
-                    second += csts;
-                }
+                wrap_single_var_SK(v, second, csts, is_signed);
             }
 
             /*
              returns a vector of second domain elements, so that they are joined to the condition at the end to gain some precision
              */
-            std::vector<Domain2> cond_wrap_exprs_var(variable_t v, Domain1& first, Domain2& second, bool is_signed) {
+            std::vector<Domain2> cond_wrap_exprs_var(variable_t v, Domain2& second, bool is_signed) {
                 std::vector<Domain2> dom2_elem;
                 if (var_overflow(v, first, is_signed)) {
                     //CRAB_WARN("var ", v, " overflew: cond_wrap_exprs_var");
@@ -521,10 +513,10 @@ namespace crab {
                 return dom2_elem;
             }
 
-            std::vector<Domain2> wrap_exprs_single_var(variable_t v, Domain1& first, vector<Domain2>& second_list, bool is_signed) {
+            std::vector<Domain2> wrap_exprs_single_var(variable_t v, vector<Domain2>& second_list, bool is_signed) {
                 std::vector<Domain2> dom2_elem;
                 for (Domain2 second : second_list) {
-                    std::vector<Domain2> temp = cond_wrap_exprs_var(v, first, second, is_signed);
+                    std::vector<Domain2> temp = cond_wrap_exprs_var(v, second, is_signed);
                     dom2_elem = append_vector<Domain2>(dom2_elem, temp);
                 }
                 return dom2_elem;
@@ -538,14 +530,14 @@ namespace crab {
                 return var_vector;
             }
 
-            std::vector<Domain2> wrap_exprs_vars(vector<variable_t> var_vector, Domain1 & first, vector<Domain2> second_list, bool is_signed) {
+            std::vector<Domain2> wrap_exprs_vars(vector<variable_t> var_vector, vector<Domain2> second_list, bool is_signed) {
                 if (var_vector.empty()) {
                     return second_list;
                 }
                 boost::optional<variable_t> head_var = head_vector<variable_t>(var_vector);
                 if (head_var) {
-                    vector<Domain2> res_first_wrap = wrap_exprs_single_var(*head_var, first, second_list, is_signed);
-                    return wrap_exprs_vars(tail_vector<variable_t>(var_vector), first, res_first_wrap, is_signed);
+                    vector<Domain2> res_first_wrap = wrap_exprs_single_var(*head_var, second_list, is_signed);
+                    return wrap_exprs_vars(tail_vector<variable_t>(var_vector), res_first_wrap, is_signed);
                 }
                 return second_list;
             }
@@ -578,34 +570,29 @@ namespace crab {
              if the expression does overflow, then wrap the expression by assigning it to a var; 
              * otherwise no wrapping is needed
              */
-            void cond_wrap_expr_SK(linear_constraint_t branch_cond, Domain1& first, Domain2& second, bool is_signed) {
+            void cond_wrap_expr_SK(linear_constraint_t branch_cond, Domain2& second, bool is_signed) {
                 number_t rhs = branch_cond.constant();
                 linear_expression_t lhs = branch_cond.expression() + rhs;
+                //CRAB_WARN("expr ", lhs, " overflew");
+                variable_set_t lhs_vars = lhs.variables();
+                vector<Domain2> second_list;
+                second_list.push_back(second);
+                //It is enough to wrap the whole expr, no need to wrap the ind. variables in it
+                vector<Domain2> res_vars_wrap = wrap_exprs_vars(from_var_set_t_2_vector(lhs_vars), second_list, is_signed);
+                /**assuming well formed expressions, that is, all vars have the same bit-width in an expr
+                 * */
+                variable_t var_new = create_fresh_wrapped_int_var(lhs);
+                res_vars_wrap = add_constrs_2_domains<Domain2>(res_vars_wrap, (lhs == var_new));
+                //TODO: do a switch on kind of constraint and form var_new KIND constant
+                linear_expression_t new_lhs_branch_expr = var_new - rhs;
+                //FIXME:  do a case split on kind and produce a right expr
+                linear_constraint_t new_cond = linear_constraint_t(new_lhs_branch_expr, branch_cond.kind());
+                second = wrap_var_in_all_domains<Domain2>(var_new, res_vars_wrap, new_cond, is_signed);
+                std::vector<variable_t> artifical_vars;
+                artifical_vars.push_back(var_new);
+                crab::domains::domain_traits<Domain2>::forget(second,
+                        artifical_vars.begin(), artifical_vars.end());
 
-                if (expr_overflow(lhs, first, is_signed)) {
-                    //CRAB_WARN("expr ", lhs, " overflew");
-                    variable_set_t lhs_vars = lhs.variables();
-                    vector<Domain2> second_list;
-                    second_list.push_back(second);
-                    //It is enough to wrap the whole expr, no need to wrap the ind. variables in it
-                    vector<Domain2> res_vars_wrap = wrap_exprs_vars(from_var_set_t_2_vector(lhs_vars), first, second_list, is_signed);
-                    /**assuming well formed expressions, that is, all vars have the same bit-width in an expr
-                     * */
-                    variable_t var_new = create_fresh_wrapped_int_var(lhs);
-                    res_vars_wrap = add_constrs_2_domains<Domain2>(res_vars_wrap, (lhs == var_new));
-                    //TODO: do a switch on kind of constraint and form var_new KIND constant
-                    linear_expression_t new_lhs_branch_expr = var_new - rhs;
-                    //FIXME:  do a case split on kind and produce a right expr
-                    linear_constraint_t new_cond = linear_constraint_t(new_lhs_branch_expr, branch_cond.kind());
-                    second = wrap_var_in_all_domains<Domain2>(var_new, res_vars_wrap, new_cond, is_signed);
-                    std::vector<variable_t> artifical_vars;
-                    artifical_vars.push_back(var_new);
-                    crab::domains::domain_traits<Domain2>::forget(second,
-                            artifical_vars.begin(), artifical_vars.end());
-                } else {
-                    //else expression did not overflow. So it is safe to add constraints
-                    second += branch_cond;
-                }
             }
 
             template <typename T>
@@ -964,13 +951,12 @@ namespace crab {
                     }
                 }
                 for (auto cst : csts) {
-                    //ignore unsigned comparisons from the unsound domain
-                    if (!(cst.is_inequality() && cst.is_unsigned())) {
-                        bool is_singed = is_signed_cmp(cst);
-                        wrap_cond_exprs(this->_product.first(), this->_product.second(), cst, is_singed); //makes second domain sound wrt modular arithmetic, so the following operation is sound
-                    }
+                    bool is_singed = is_signed_cmp(cst);
+                    wrap_cond_exprs(this->_product.second(), cst, is_singed);
+                    wrap_cond_exprs(this->_product.first(), cst, is_singed); //also apply to first because it will be the same domain
                 }
-                this->_product.first() += csts;
+
+                
             }
 
             bool is_signed_cmp(const linear_constraint_t & cst) {
