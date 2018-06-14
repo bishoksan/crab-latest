@@ -679,6 +679,7 @@ namespace crab {
 
                     //conjoining variable bounds
                     second += vars_bounds;
+                    second += csts;
                     return;
                 } else {
                     Domain2 res;
