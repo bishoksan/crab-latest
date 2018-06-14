@@ -923,6 +923,7 @@ namespace crab {
 
             void safen(const variable_t& v, bool is_signed) {
                 _product.second() -= v;
+                 _product.first() -= v;
 
             }
 
