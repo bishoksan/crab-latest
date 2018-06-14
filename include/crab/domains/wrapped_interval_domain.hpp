@@ -7,6 +7,10 @@
  ** P.J.Stuckey published in APLAS'12.
  **/
 
+/*
+ var overflow check has been disabled
+ */
+
 #include <crab/common/wrapint.hpp>
 #include <crab/common/types.hpp>
 #include <crab/common/stats.hpp>
@@ -2682,6 +2686,8 @@ private:
 	     if (signedness == SIGNED){ crab::outs() << " signed: \n";}
 	     else if (signedness == UNSIGNED) { crab::outs() << " unsigned: \n";}
 	     else {crab::outs() << " unknown unsignedness: \n";});
+    _product.second() -= v;
+      /* commented out due to some unsoundness
     if (may_have_overflow(v, signedness)) { 
       _product.second() -= v;
       CRAB_LOG("wrapped-num",
@@ -2690,6 +2696,7 @@ private:
       CRAB_LOG("wrapped-num",
 	       crab::outs() << "\t" << v << " cannot overflow\n";);
     }
+       */
   }
     
   // Reduction from a potentially "unsound" numerical domain to the
