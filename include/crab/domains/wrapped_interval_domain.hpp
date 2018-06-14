@@ -2207,6 +2207,26 @@ public:
   const wrapped_interval_domain_t& get_wrapped_interval_domain() const {
     return _w_int_dom;
   }
+linear_constraint_system_t w_interval_to_lcs(variable_t v, bool is_signed) const {
+                wrapped_interval_t w_i = get_wrapped_interval(v);
+                interval_t i = w_i.to_interval(is_signed);
+                return interval_to_lcs(v, i);
+            }
+
+            linear_constraint_system_t interval_to_lcs(variable_t v, interval_t res) const{
+                linear_constraint_system_t csts;
+                if (res.is_bottom()) {
+                    csts += linear_constraint_t::get_false();
+                    return csts;
+                }
+                if (!res.is_top()) {
+                    boost::optional<number_t> lb = res.lb().number();
+                    boost::optional<number_t> ub = res.ub().number();
+                    if (lb) csts += linear_constraint_t(v >= *lb);
+                    if (ub) csts += linear_constraint_t(v <= *ub);
+                }
+                return csts;
+            }
   
   void operator-=(variable_t v) {
     _w_int_dom -= v;
@@ -2687,6 +2707,11 @@ private:
 	     else if (signedness == UNSIGNED) { crab::outs() << " unsigned: \n";}
 	     else {crab::outs() << " unknown unsignedness: \n";});
     _product.second() -= v;
+     if (signedness == SIGNED) {
+                        _product.second() += _product.first().w_interval_to_lcs(v, true);
+      } else {
+                        _product.second() += _product.first().w_interval_to_lcs(v, false);
+       }
       /* commented out due to some unsoundness
     if (may_have_overflow(v, signedness)) { 
       _product.second() -= v;
@@ -2910,7 +2935,7 @@ public:
       
   void operator+=(linear_constraint_system_t csts) {
     // Add first the constraint in the wrapped interval domain
-    _product.first()  += csts;
+    //_product.first()  += csts;
 
     linear_constraint_system_t non_overflow_csts;
     CRAB_LOG("wrapped-num",
@@ -2931,14 +2956,18 @@ public:
       }
       // add constraint in the "unsound" numerical domain only if
       // c cannot overflow.
+      /*
       if (!may_overflow(c, signedness)) {
 	non_overflow_csts += c;
 	CRAB_LOG("wrapped-num",
 		 crab::outs() << "** added constraint: " << c << "\n");        
 
       }
+       */
     }
-    _product.second() += non_overflow_csts;
+    //after rectifying always add constraints
+    _product.first()  += csts;
+    _product.second() += csts;
 
     CRAB_LOG("wrapped-num",
 	     crab::outs() << "END add constraints: " << _product<< "\n");        
