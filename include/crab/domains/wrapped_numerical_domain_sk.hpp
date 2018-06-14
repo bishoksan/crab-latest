@@ -410,18 +410,13 @@ namespace crab {
                 //the following is done to cope up with the normalisation of linear constraints
                 linear_expression_t lhs_branch_cond = branch_cond.expression() + rhs_const;
                 //wrap rhs const and get a new system of constraints
-                linear_constraint_t new_lcs = wrap_rhs_and_get_new_constr(branch_cond, is_signed);
                 bool is_variable_lhs = lhs_branch_cond.is_variable();
-                bool is_const_lhs = lhs_branch_cond.is_constant();
-                if (is_const_lhs) {
-                    second += branch_cond;
-                }
                 if (is_variable_lhs) {
                     //CRAB_WARN(lhs_branch_cond, " is var ");
-                    cond_wrap_var_SK(*(lhs_branch_cond.get_variable()), second, new_lcs, is_signed);
+                    wrap_single_var_SK(*(lhs_branch_cond.get_variable()), second, is_signed);
                 } else {
                     //CRAB_WARN(lhs_branch_cond, " is expr ");
-                    cond_wrap_expr_SK(new_lcs, second, is_signed);
+                    wrap_expr_SK(branch_cond, second, is_signed);
                 }
             }
 
@@ -442,13 +437,6 @@ namespace crab {
             number_t wrap_const(linear_constraint_t branch_cond, number_t rhs_const, bool is_signed) {
                 bitwidth_t bit = (*(branch_cond.variables().begin())).get_bitwidth();
                 return wrap_num_2_fix_width(rhs_const, bit, is_signed);
-            }
-
-            /*
-             checks if a wrapping is necessary for this variable, if so,  do the necessary wrapping
-             */
-            void cond_wrap_var_SK(variable_t v, Domain2& second, linear_constraint_t csts, bool is_signed) {
-                wrap_single_var_SK(v, second, csts, is_signed);
             }
 
             /*
@@ -514,133 +502,22 @@ namespace crab {
                 return boost::optional<T>{};
             }
 
-            /*wraps a branching condition if necessary, for now only the left cond
-             if the expression does overflow, then wrap the expression by assigning it to a var; 
-             * otherwise no wrapping is needed
+            /*wraps a branching condition, for now only the left cond
              */
-            void cond_wrap_expr_SK(linear_constraint_t branch_cond, Domain2& second, bool is_signed) {
+            void wrap_expr_SK(linear_constraint_t branch_cond, Domain2& second, bool is_signed) {
                 number_t rhs = branch_cond.constant();
                 linear_expression_t lhs = branch_cond.expression() + rhs;
                 //CRAB_WARN("expr ", lhs, " overflew");
                 variable_set_t lhs_vars = lhs.variables();
-                vector<Domain2> second_list;
-                second_list.push_back(second);
-                //It is enough to wrap the whole expr, no need to wrap the ind. variables in it
-                vector<Domain2> res_vars_wrap = wrap_exprs_vars(from_var_set_t_2_vector(lhs_vars), second_list, is_signed);
-                /**assuming well formed expressions, that is, all vars have the same bit-width in an expr
-                 * */
+                //wrap all vars
+                for (auto var : lhs_vars) {
+                    wrap_single_var_SK(var, second, is_signed);
+                }
+                //wrap the expr
                 variable_t var_new = create_fresh_wrapped_int_var(lhs);
-                res_vars_wrap = add_constrs_2_domains<Domain2>(res_vars_wrap, (lhs == var_new));
-                //TODO: do a switch on kind of constraint and form var_new KIND constant
-                linear_expression_t new_lhs_branch_expr = var_new - rhs;
-                //FIXME:  do a case split on kind and produce a right expr
-                linear_constraint_t new_cond = linear_constraint_t(new_lhs_branch_expr, branch_cond.kind());
-                second = wrap_var_in_all_domains<Domain2>(var_new, res_vars_wrap, new_cond, is_signed);
-                std::vector<variable_t> artifical_vars;
-                artifical_vars.push_back(var_new);
-                crab::domains::domain_traits<Domain2>::forget(second,
-                        artifical_vars.begin(), artifical_vars.end());
-
-            }
-
-            template <typename T>
-            T wrap_var_in_all_domains(variable_t v, vector<T> domains_2, linear_constraint_t new_cond, bool is_signed) {
-                T res = T::bottom();
-                for (auto dom2 : domains_2) {
-                    wrap_single_var_SK(v, dom2, new_cond, is_signed);
-                    res |= dom2;
-                }
-                return res;
-            }
-
-            template <typename T>
-            vector<T> add_constrs_2_domains(vector<T> domains, linear_constraint_t lc) {
-                vector<T> res;
-                for (auto dom : domains) {
-                    dom += lc;
-                    res.push_back(dom);
-                }
-                return res;
-
-            }
-
-            void wrap_a_var_based_on_wrapped_interval(variable_t var, Domain1& first, Domain2& second, linear_constraint_t csts, bool is_signed) {
-                second = project_single_var<Domain2>(var, second);
-                wrapped_interval_t i_var = first[var];
-                Domain2 second_cp = second; //copy of the second domain
-                Domain2 acc = Domain2::bottom();
-                if (!i_var.is_top()) {
-                    std::vector<linear_constraint_system_t> lcss = from_wrapped_interval_to_list_of_linear_constraints(var, i_var, is_signed);
-                    //TODO: improve this code
-                    bool first_entry = true;
-                    for (auto lcs : lcss) {
-                        Domain2 temp = second_cp;
-                        temp += lcs;
-                        temp += csts;
-                        if (first_entry) {
-                            acc = temp;
-                            first_entry = false;
-                        } else {
-                            acc |= temp; //join with the second
-                        }
-                    }
-                    second = acc;
-                } else {
-                    //if it is  top, we can do [0, pos max] join [-neg min, neg max]
-                    vector<linear_constraint_system_t> bounds = get_var_bounds_hemispherewise(var, is_signed);
-                    Domain2 second_cp = second;
-
-                    second += bounds.front();
-                    second += csts;
-
-                    second_cp += bounds.back();
-                    second_cp += csts;
-
-                    second |= second_cp;
-                }
-            }
-
-            std::vector<Domain2> wrap_var_SK_wo_adding_constrs(variable_t var, Domain2& second, bool is_signed, int threshold = 16) {
-                std::vector<Domain2> dom2_elem;
-                second = project_single_var<Domain2>(var, second);
-
-                bitwidth_t bit = var.get_bitwidth();
-                uint64_t modulo = get_modulo(bit);
-                int lower_quad_index, upper_quad_index;
-                //TODO: pass as a parameter, move this code
-                to_intervals<Domain2> inv2(second);
-                auto i_domain = inv2();
-                interval_t var_interval = i_domain[var];
-                if (var_interval.lb().is_finite() && var_interval.ub().is_finite()) {
-                    auto lb = *(var_interval.lb().number());
-                    auto ub = *(var_interval.ub().number());
-                    //compute the quadrants
-                    lower_quad_index = (long(lb) - get_signed_min(bit)) / modulo;
-                    upper_quad_index = (long(ub) - get_signed_min(bit)) / modulo;
-                }
-                linear_constraint_system_t vars_bounds = get_var_bounds(var, is_signed);
-
-                if (!var_interval.lb().is_finite() || !var_interval.ub().is_finite() || (upper_quad_index - lower_quad_index) > threshold) {
-                    project_single_var<Domain2>(var, second);
-                    //conjoining variable bounds
-                    second += vars_bounds;
-                    dom2_elem.push_back(second);
-                } else {
-                    Domain2 res;
-                    //shift and join quadrants
-                    for (int i = lower_quad_index; i <= upper_quad_index; i++) {
-                        Domain2 numerical_domain = second;
-                        numerical_domain = update_var_in_domain(numerical_domain, var, i, modulo);
-                        //meet,  
-                        numerical_domain += vars_bounds;
-                        res |= numerical_domain; //join all the quadrants
-                    }
-                    second = res;
-                    // this->_product.second() = second;
-
-                    dom2_elem.push_back(second);
-                }
-                return dom2_elem;
+                second += (lhs == var_new);
+                wrap_single_var_SK(var_new, second, is_signed);
+                second -= var_new;
             }
 
             /*Simon and Kings method of wrapping a single variable
@@ -650,7 +527,7 @@ namespace crab {
              * TODO: move this threshold parameter to the top call
              */
 
-            void wrap_single_var_SK(variable_t var, Domain2& second, linear_constraint_system_t csts, bool is_signed, int threshold = 16) {
+            void wrap_single_var_SK(variable_t var, Domain2& second, bool is_signed, int threshold = 16) {
                 //CRAB_WARN("wrap_single_var_SK CALLED, second ", second);
                 bitwidth_t bit = var.get_bitwidth();
                 uint64_t modulo = get_modulo(bit);
@@ -671,16 +548,9 @@ namespace crab {
                 linear_constraint_system_t vars_bounds = get_var_bounds(var, is_signed);
 
                 if (!var_interval.lb().is_finite() || !var_interval.ub().is_finite() || (upper_quad_index - lower_quad_index) > threshold) {
-                    //CRAB_WARN("one of the finiteness failed");
-                    //project out var from the second domain and add variables bounds
-                    //CRAB_WARN("second before proj ", second);
-                    project_single_var<Domain2>(var, second);
-                    //CRAB_WARN("second after proj ", second);
-
+                    second -= var;
                     //conjoining variable bounds
                     second += vars_bounds;
-                    second += csts;
-                    return;
                 } else {
                     Domain2 res;
                     //shift and join quadrants
@@ -691,14 +561,9 @@ namespace crab {
                         //CRAB_WARN("after replacement ", numerical_domain);
                         //meet,  
                         numerical_domain += vars_bounds;
-                        numerical_domain += csts;
                         res |= numerical_domain; //join all the quadrants
                     }
                     second = res;
-                    //CRAB_WARN("resulting wrap domain ", second);
-                    // this->_product.second() = second;
-
-                    return;
                 }
             }
 
@@ -904,7 +769,9 @@ namespace crab {
                     wrap_cond_exprs(this->_product.second(), cst, is_singed);
                     wrap_cond_exprs(this->_product.first(), cst, is_singed); //also apply to first because it will be the same domain
                 }
-
+                //safe to add constraints
+                this->_product.second() += csts;
+                this->_product.first() += csts;
 
             }
 
@@ -916,16 +783,13 @@ namespace crab {
                 return is_singed;
             }
 
-            /** Basically forgets variable v from the unsound domain 
-             * if the wrapped interval cannot deduce non-overflow 
-             This is only applied to those operations that does not commute with the modulo
+            /** wraps a variable to its range, this is needed for all that does not commute with the modulo
               (branches, div, and rem).
              * */
 
             void safen(const variable_t& v, bool is_signed) {
-                _product.second() -= v;
-                 _product.first() -= v;
-
+                wrap_single_var_SK(v, _product.second(), is_signed);
+                wrap_single_var_SK(v, _product.first(), is_signed);
             }
 
             void operator-=(variable_t v) {
