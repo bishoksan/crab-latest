@@ -394,7 +394,6 @@ namespace crab {
                 return bound_vec;
             }
 
-
             /*checks if there is an overflow before a branching condition, if so calls a wrapping operator.
              * csts: is a branching condition
              * pre: the second domain is non empty, csts is a single constraint
@@ -448,7 +447,7 @@ namespace crab {
             /*
              checks if a wrapping is necessary for this variable, if so,  do the necessary wrapping
              */
-            void cond_wrap_var_SK(variable_t v, Domain1& first, Domain2& second, linear_constraint_t csts, bool is_signed) {
+            void cond_wrap_var_SK(variable_t v, Domain2& second, linear_constraint_t csts, bool is_signed) {
                 wrap_single_var_SK(v, second, csts, is_signed);
             }
 
@@ -905,7 +904,7 @@ namespace crab {
                     wrap_cond_exprs(this->_product.first(), cst, is_singed); //also apply to first because it will be the same domain
                 }
 
-                
+
             }
 
             bool is_signed_cmp(const linear_constraint_t & cst) {
@@ -923,8 +922,8 @@ namespace crab {
              * */
 
             void safen(const variable_t& v, bool is_signed) {
-                    _product.second() -= v;
-                
+                _product.second() -= v;
+
             }
 
             void operator-=(variable_t v) {
