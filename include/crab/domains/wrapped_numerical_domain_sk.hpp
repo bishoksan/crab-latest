@@ -78,159 +78,6 @@ namespace crab {
                 }
             };
 
-            std::vector<interval_t> both_in_bound_math_ordered(number_t start, number_t end, bitwidth_t bit, bool is_signed) {
-                std::vector<interval_t> res;
-                bound_t lb(start);
-                bound_t ub(end);
-                if (in_same_hemisphere(start, end, bit, is_signed)) {
-                    interval_t first(lb, ub);
-                    res.push_back(first);
-                    return res;
-                }
-                //else they are in the different hemisphere, this only happen in the signed case where the first is
-                //in 1-hem and the second in 0-hem
-                bound_t ub1(max_1_hemisphere(bit, is_signed));
-                interval_t first_i(lb, ub1);
-                bound_t lb2(min_0_hemisphere(bit, is_signed));
-                interval_t second_i(lb2, ub);
-                res.push_back(first_i);
-                res.push_back(second_i);
-                return res;
-
-            }
-
-            std::vector<interval_t> both_in_bound_math_unordered(number_t start, number_t end, bitwidth_t bit, bool is_signed) {
-                bound_t lb(start);
-                bound_t ub(end);
-                std::vector<interval_t> res;
-
-                bool start_hem = hemisphere_1(start, bit, is_signed);
-                bool end_hem = hemisphere_1(end, bit, is_signed);
-
-                //both in 0-hemisphere
-                if (!start_hem && !end_hem) {
-                    bound_t up1_both_0_hem(max_0_hemisphere(bit, is_signed));
-                    interval_t first_both_0_hem(lb, up1_both_0_hem);
-
-                    //bound_t up1_both_0_hem(max_0_hemisphere(bit, is_signed));
-                    interval_t second_both_0_hem(bound_t(min_1_hemisphere(bit, is_signed)), bound_t(max_1_hemisphere(bit, is_signed)));
-
-                    interval_t third_both_0_hem(bound_t(max_0_hemisphere(bit, is_signed)), ub);
-
-                    res.push_back(first_both_0_hem);
-                    res.push_back(second_both_0_hem);
-                    res.push_back(third_both_0_hem);
-                    return res;
-
-                }
-
-                //both in 1-hemisphere
-                if (start_hem && end_hem) {
-                    bound_t up1_both_1_hem(max_1_hemisphere(bit, is_signed));
-                    interval_t first_both_1_hem(lb, up1_both_1_hem);
-
-                    //bound_t up1_both_0_hem(max_0_hemisphere(bit, is_signed));
-                    interval_t second_both_1_hem(bound_t(min_0_hemisphere(bit, is_signed)), bound_t(max_0_hemisphere(bit, is_signed)));
-
-                    interval_t third_both_1_hem(bound_t(min_1_hemisphere(bit, is_signed)), ub);
-
-                    res.push_back(first_both_1_hem);
-                    res.push_back(second_both_1_hem);
-                    res.push_back(third_both_1_hem);
-                    return res;
-
-                }
-
-                //the first in 1 hemis and the second in 0 hemis, only possible for unsigned integer
-                if (start_hem && !end_hem) {
-                    bound_t up_1_0_hem(max_1_hemisphere(bit, is_signed));
-                    interval_t first_1_0_hem(lb, up_1_0_hem);
-
-                    //bound_t up1_both_0_hem(max_0_hemisphere(bit, is_signed));
-                    interval_t second_1_0_hem(bound_t(min_0_hemisphere(bit, is_signed)), ub);
-
-
-                    res.push_back(first_1_0_hem);
-                    res.push_back(second_1_0_hem);
-                    return res;
-                }
-
-                //the first in 0 hemis and the second in 1 hemis, only possible for signed integer
-                if (!start_hem && end_hem) {
-                    bound_t up_0_1_hem(max_0_hemisphere(bit, is_signed));
-                    interval_t first_0_1_hem(lb, up_0_1_hem);
-
-                    //bound_t up1_both_0_hem(max_0_hemisphere(bit, is_signed));
-                    interval_t second_0_1_hem(bound_t(min_1_hemisphere(bit, is_signed)), ub);
-
-
-                    res.push_back(first_0_1_hem);
-                    res.push_back(second_0_1_hem);
-                    return res;
-                }
-                return res;
-
-            }
-
-            /*given a wrap-interval for a variable, it produces its interpretation in mathematical interval (as array of intervals, which suppose to be joined)*/
-            std::vector<interval_t> from_wrapped_to_intervals(variable_t v, wrapped_interval_t i, bool is_signed) {
-                bitwidth_t bit = v.get_bitwidth();
-                string start, end;
-                if (is_signed) {
-                    start = i.start().get_signed_str();
-                    end = i.stop().get_signed_str();
-                } else {
-                    start = i.start().get_unsigned_str();
-                    end = i.stop().get_unsigned_str();
-                }
-                //the following is needed since wrapped interval represents a sequence of bits
-                number_t start_num = wrap_num_2_fix_width(number_t(start), bit, is_signed);
-                number_t end_num = wrap_num_2_fix_width(number_t(end), bit, is_signed);
-
-                std::vector<interval_t> res;
-
-                //if both bounds are the same, the interval is singleton
-                if (start_num == end_num) {
-                    //both are in
-                    interval_t first(start_num);
-                    //return first;
-                    res.push_back(start_num);
-                    return res;
-                }
-                bool math_order = start_num <= end_num;
-                if (math_order) {
-
-                    return both_in_bound_math_ordered(start_num, end_num, bit, is_signed);
-                }
-                //else, not in  mathematical order
-                return both_in_bound_math_unordered(start_num, end_num, bit, is_signed);
-            }
-
-            std::vector<linear_constraint_system_t> from_wrapped_interval_to_list_of_linear_constraints(variable_t v, wrapped_interval_t res, bool is_signed) {
-                std::vector<interval_t> in = from_wrapped_to_intervals(v, res, is_signed);
-                std::vector<linear_constraint_system_t> out;
-                for (auto a : in) {
-                    out.push_back(from_interval_to_linear_constraints(v, a));
-                }
-                return out;
-            }
-
-            linear_constraint_system_t from_interval_to_linear_constraints(variable_t v, interval_t res) {
-                linear_constraint_system_t csts;
-                if (!res.is_top()) {
-                    boost::optional<number_t> lb = res.lb().number();
-                    boost::optional<number_t> ub = res.ub().number();
-                    if (lb) csts += linear_constraint_t(v >= *lb);
-                    if (ub) csts += linear_constraint_t(v <= *ub);
-                }
-                return csts;
-            }
-
-            long long to_longl(std::string s) {
-
-                return std::stoll(s, nullptr);
-            }
-
             variable_t create_fresh_wrapped_int_var(linear_expression_t lexpr) {
                 //assuming that all the variables in the constraints has the same bit-width
                 variable_set_t vars = lexpr.variables();
@@ -283,48 +130,6 @@ namespace crab {
                 return (nr >= min && nr <= max);
             }
 
-            number_t min_0_hemisphere(bitwidth_t bit, bool is_signed) {
-
-                return get_unsigned_min(bit); //0 for both signed and unsigned
-            }
-
-            number_t max_0_hemisphere(bitwidth_t bit, bool is_signed) {
-                if (is_signed) {
-                    return get_signed_max(bit);
-                }
-                return get_unsigned_max(bit);
-            }
-
-            number_t min_1_hemisphere(bitwidth_t bit, bool is_signed) {
-                if (is_signed) {
-                    return get_signed_min(bit);
-                }
-                return get_signed_max(bit) + 1;
-            }
-
-            number_t max_1_hemisphere(bitwidth_t bit, bool is_signed) {
-                if (is_signed) {
-
-                    return get_unsigned_min(bit) - 1;
-                }
-                return get_unsigned_max(bit);
-            }
-
-            /*
-             returns true if the number is in  1-hemisphere
-             */
-
-            bool hemisphere_1(number_t res, bitwidth_t bit, bool is_signed) {
-                return nr_within_bound(res, min_1_hemisphere(bit, is_signed), max_1_hemisphere(bit, is_signed));
-            }
-
-            bool in_same_hemisphere(number_t nr1, number_t nr2, bitwidth_t bit, bool is_signed) {
-                bool nr1_hem = hemisphere_1(nr1, bit, is_signed);
-                bool nr2_hem = hemisphere_1(nr2, bit, is_signed);
-
-                return ((nr1_hem && nr2_hem) || (!nr1_hem && !nr2_hem));
-            }
-
             number_t wrap_num_2_fix_width(number_t nr, bitwidth_t bit, bool is_signed) {
                 uint64_t modulo = get_modulo(bit);
                 number_t res = nr % modulo;
@@ -367,33 +172,6 @@ namespace crab {
                 return vars_bounds;
             }
 
-            vector<linear_constraint_system_t> get_var_bounds_hemispherewise(const variable_t var, bool is_signed) {
-                bitwidth_t bit = var.get_bitwidth();
-                linear_constraint_system_t vars_bounds1, vars_bound2;
-                vector<linear_constraint_system_t> bound_vec;
-                if (is_signed) {
-                    vars_bounds1 += (var >= number_t(min_1_hemisphere(bit, true)));
-                    vars_bounds1 += (var <= number_t(max_1_hemisphere(bit, true)));
-                    bound_vec.push_back(vars_bounds1);
-
-                    vars_bound2 += (var >= number_t(min_0_hemisphere(bit, true)));
-                    vars_bound2 += (var <= number_t(max_0_hemisphere(bit, true)));
-                    bound_vec.push_back(vars_bound2);
-
-                } else {
-
-                    vars_bounds1 += (var >= number_t(min_1_hemisphere(bit, false)));
-                    vars_bounds1 += (var <= number_t(max_1_hemisphere(bit, false)));
-                    bound_vec.push_back(vars_bounds1);
-
-                    vars_bound2 += (var >= number_t(min_0_hemisphere(bit, false)));
-                    vars_bound2 += (var <= number_t(max_0_hemisphere(bit, false)));
-                    bound_vec.push_back(vars_bound2);
-                }
-
-                return bound_vec;
-            }
-
             /*checks if there is an overflow before a branching condition, if so calls a wrapping operator.
              * csts: is a branching condition
              * pre: the second domain is non empty, csts is a single constraint
@@ -412,13 +190,15 @@ namespace crab {
                 //wrap rhs const and get a new system of constraints
                 bool is_variable_lhs = lhs_branch_cond.is_variable();
                 if (is_variable_lhs) {
-                    //CRAB_WARN(lhs_branch_cond, " is var ");
+                    CRAB_WARN(lhs_branch_cond, " is var ");
+                    CRAB_WARN(" before wrap ", second);
                     wrap_single_var_SK(*(lhs_branch_cond.get_variable()), second, is_signed);
+                    CRAB_WARN(" after wrap ", second);
                 } else {
-                    //CRAB_WARN(lhs_branch_cond, " is expr ");
-                    //CRAB_WARN(" before wrap ", second);
+                    CRAB_WARN(lhs_branch_cond, " is expr ");
+                    CRAB_WARN(" before wrap ", second);
                     wrap_expr_SK(branch_cond, second, is_signed);
-                    //CRAB_WARN(" after wrap ", second);
+                    CRAB_WARN(" after wrap ", second);
                 }
             }
 
@@ -441,69 +221,6 @@ namespace crab {
                 return wrap_num_2_fix_width(rhs_const, bit, is_signed);
             }
 
-            /*
-             returns a vector of second domain elements, so that they are joined to the condition at the end to gain some precision
-             */
-            std::vector<Domain2> cond_wrap_exprs_var(variable_t v, Domain2& second, bool is_signed) {
-                std::vector<Domain2> dom2_elem;
-                dom2_elem = wrap_var_SK_wo_adding_constrs(v, second, is_signed);
-
-                return dom2_elem;
-            }
-
-            std::vector<Domain2> wrap_exprs_single_var(variable_t v, vector<Domain2>& second_list, bool is_signed) {
-                std::vector<Domain2> dom2_elem;
-                for (Domain2 second : second_list) {
-                    std::vector<Domain2> temp = cond_wrap_exprs_var(v, second, is_signed);
-                    dom2_elem = append_vector<Domain2>(dom2_elem, temp);
-                }
-                return dom2_elem;
-            }
-
-            vector<variable_t> from_var_set_t_2_vector(variable_set_t vars) {
-                vector<variable_t> var_vector;
-                for (auto var : vars) {
-                    var_vector.push_back(var);
-                }
-                return var_vector;
-            }
-
-            std::vector<Domain2> wrap_exprs_vars(vector<variable_t> var_vector, vector<Domain2> second_list, bool is_signed) {
-                if (var_vector.empty()) {
-                    return second_list;
-                }
-                boost::optional<variable_t> head_var = head_vector<variable_t>(var_vector);
-                if (head_var) {
-                    vector<Domain2> res_first_wrap = wrap_exprs_single_var(*head_var, second_list, is_signed);
-                    return wrap_exprs_vars(tail_vector<variable_t>(var_vector), res_first_wrap, is_signed);
-                }
-                return second_list;
-            }
-
-            template <typename T>
-            std::vector<T> append_vector(vector<T> a, vector<T> b) {
-                if (a.empty()) {
-                    return b;
-                }
-                a.insert(a.end(), b.begin(), b.end());
-
-                return a;
-            }
-
-            template <typename T>
-            std::vector<T> tail_vector(vector<T> a) {
-
-                return std::vector<T>(a.begin() + 1, a.end());
-            }
-
-            template <typename T>
-            boost::optional<T> head_vector(vector<T> a) {
-                if (a.size() > 0)
-                    return *(a.begin());
-
-                return boost::optional<T>{};
-            }
-
             /*wraps a branching condition, for now only the left cond
              */
             void wrap_expr_SK(linear_constraint_t branch_cond, Domain2& second, bool is_signed) {
@@ -512,9 +229,10 @@ namespace crab {
                 //CRAB_WARN("expr ", lhs, " overflew");
                 variable_set_t lhs_vars = lhs.variables();
                 //wrap all vars
-                //                for (auto var : lhs_vars) {
-                //                    wrap_single_var_SK(var, second, is_signed);
-                //                }
+                for (auto var : lhs_vars) {
+                    wrap_single_var_SK(var, second, is_signed);
+                    //second -= var;
+                }
                 //wrap the expr
                 variable_t var_new = create_fresh_wrapped_int_var(lhs);
                 second += (lhs == var_new);
@@ -547,11 +265,14 @@ namespace crab {
                     //CRAB_WARN("lower index upper index ", lower_quad_index, " ", upper_quad_index);
                 }
                 linear_constraint_system_t vars_bounds = get_var_bounds(var, is_signed);
+                //Domain2 tmp;
+                //tmp += vars_bounds;
 
                 if (!var_interval.lb().is_finite() || !var_interval.ub().is_finite() || (upper_quad_index - lower_quad_index) > threshold) {
                     second -= var;
                     //conjoining variable bounds
                     second += vars_bounds;
+                    //second = second & tmp;
                 } else {
                     Domain2 res = Domain2::bottom();
                     if ((upper_quad_index == 0) && (lower_quad_index == 0)) {
@@ -564,24 +285,13 @@ namespace crab {
                             numerical_domain = update_var_in_domain(numerical_domain, var, i, modulo);
                             //CRAB_WARN("after replacement ", numerical_domain);
                             numerical_domain += vars_bounds;
+                            //numerical_domain = numerical_domain & tmp;
                             res |= numerical_domain; //join all the quadrants
                         }
                     }
                     //CRAB_WARN("wraped res", res);
                     second = res;
                 }
-            }
-
-            /*project out a variable var from a numerical abstract domain element second*/
-            template <typename T>
-            T & project_single_var(variable_t var, T & dom) {
-                //TODO: improve it, not a right way to do
-                std::vector<variable_t> vars;
-                vars.push_back(var);
-                crab::domains::domain_traits<T>::forget(dom,
-                        vars.begin(), vars.end());
-
-                return dom;
             }
 
             /*update a variable var with an Expr in an abstract domain
@@ -609,7 +319,7 @@ namespace crab {
                 //CRAB_WARN("exprssion to update with ", t);
                 numerical_domain += (var == rhs_expr);
                 //project out var_new
-                numerical_domain-=var_new;
+                numerical_domain -= var_new;
                 return numerical_domain;
                 //return project_single_var<Domain2>(var_new, numerical_domain);
             }
