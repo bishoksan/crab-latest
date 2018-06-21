@@ -416,7 +416,9 @@ namespace crab {
                     wrap_single_var_SK(*(lhs_branch_cond.get_variable()), second, is_signed);
                 } else {
                     //CRAB_WARN(lhs_branch_cond, " is expr ");
+                    //CRAB_WARN(" before wrap ", second);
                     wrap_expr_SK(branch_cond, second, is_signed);
+                    //CRAB_WARN(" after wrap ", second);
                 }
             }
 
@@ -510,9 +512,9 @@ namespace crab {
                 //CRAB_WARN("expr ", lhs, " overflew");
                 variable_set_t lhs_vars = lhs.variables();
                 //wrap all vars
-                for (auto var : lhs_vars) {
-                    wrap_single_var_SK(var, second, is_signed);
-                }
+                //                for (auto var : lhs_vars) {
+                //                    wrap_single_var_SK(var, second, is_signed);
+                //                }
                 //wrap the expr
                 variable_t var_new = create_fresh_wrapped_int_var(lhs);
                 second += (lhs == var_new);
@@ -521,14 +523,13 @@ namespace crab {
             }
 
             /*Simon and Kings method of wrapping a single variable
-             consider the type of variable is signed, and the default bit is 32
              * the abstract domain that need to be wrapped is the numerical one (second)
              * threshold puts a limit on how many disjunctions to produce while wrapping
              * TODO: move this threshold parameter to the top call
              */
 
             void wrap_single_var_SK(variable_t var, Domain2& second, bool is_signed, int threshold = 16) {
-                //CRAB_WARN("wrap_single_var_SK CALLED, second ", second);
+                //CRAB_WARN("wrap_single_var_SK CALLED, second, var ", second, " ", var);
                 bitwidth_t bit = var.get_bitwidth();
                 uint64_t modulo = get_modulo(bit);
                 int lower_quad_index, upper_quad_index;
@@ -552,17 +553,21 @@ namespace crab {
                     //conjoining variable bounds
                     second += vars_bounds;
                 } else {
-                    Domain2 res;
-                    //shift and join quadrants
-                    for (int i = lower_quad_index; i <= upper_quad_index; i++) {
-                        Domain2 numerical_domain = second;
-                        //CRAB_WARN("numerical  domain before replacement ", numerical_domain);
-                        numerical_domain = update_var_in_domain(numerical_domain, var, i, modulo);
-                        //CRAB_WARN("after replacement ", numerical_domain);
-                        //meet,  
-                        numerical_domain += vars_bounds;
-                        res |= numerical_domain; //join all the quadrants
+                    Domain2 res = Domain2::bottom();
+                    if ((upper_quad_index == 0) && (lower_quad_index == 0)) {
+                        res = second;
+                    } else {
+                        //shift and join quadrants
+                        for (int i = lower_quad_index; i <= upper_quad_index; i++) {
+                            Domain2 numerical_domain = second;
+                            //CRAB_WARN("numerical  domain before replacement ", numerical_domain);
+                            numerical_domain = update_var_in_domain(numerical_domain, var, i, modulo);
+                            //CRAB_WARN("after replacement ", numerical_domain);
+                            numerical_domain += vars_bounds;
+                            res |= numerical_domain; //join all the quadrants
+                        }
                     }
+                    //CRAB_WARN("wraped res", res);
                     second = res;
                 }
             }
@@ -604,7 +609,9 @@ namespace crab {
                 //CRAB_WARN("exprssion to update with ", t);
                 numerical_domain += (var == rhs_expr);
                 //project out var_new
-                return project_single_var<Domain2>(var_new, numerical_domain);
+                numerical_domain-=var_new;
+                return numerical_domain;
+                //return project_single_var<Domain2>(var_new, numerical_domain);
             }
 
 
@@ -748,27 +755,31 @@ namespace crab {
 
             /*assume that the call to this operator is only coming from an assume  statement (branch/conditional)*/
             void operator+=(linear_constraint_system_t csts) {
-                //bool is_singed = signed_world();
+                //CRAB_WARN("adding cond ", csts);
                 if (csts.is_false()) {
                     this->_product.second() += csts;
                     this->_product.first() += csts;
                     return;
                 }
-                if (csts.size() == 0) { //is true
-                    return;
-                }
+                //                if (csts.size() == 0) { //is true
+                //                    return;
+                //                }
                 //contains a single element and is tautology, means true
-                if (csts.size() == 1) {
-                    linear_constraint_t lc = *(csts.begin());
-                    if (lc.is_tautology()) {
-                        return;
+                //                if (csts.size() == 1) {
+                //                    linear_constraint_t lc = *(csts.begin());
+                //                    if (lc.is_tautology()) {
+                //                        return;
+                //                    }
+                //                }
+                //CRAB_WARN("=========== Wrap begin  second =========== ", _product.second());
+                for (auto cst : csts) {
+                    if (!cst.is_tautology()) {
+                        bool is_singed = is_signed_cmp(cst);
+                        wrap_cond_exprs(this->_product.second(), cst, is_singed);
+                        wrap_cond_exprs(this->_product.first(), cst, is_singed); //also apply to first because it will be the same domain
                     }
                 }
-                for (auto cst : csts) {
-                    bool is_singed = is_signed_cmp(cst);
-                    wrap_cond_exprs(this->_product.second(), cst, is_singed);
-                    wrap_cond_exprs(this->_product.first(), cst, is_singed); //also apply to first because it will be the same domain
-                }
+                //CRAB_WARN("=========== Wrap end  second ===========", _product.second());
                 //safe to add constraints
                 this->_product.second() += csts;
                 this->_product.first() += csts;
