@@ -417,7 +417,7 @@ namespace crab {
 
             interval_t operator[](variable_t v) {
 
-                return this->wrap_dom.second()[v];
+                return this->wrap_dom[v];
             }
 
             virtual void backward_assign(variable_t x, linear_expression_t e,
