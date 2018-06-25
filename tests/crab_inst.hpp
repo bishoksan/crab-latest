@@ -32,6 +32,12 @@ Z_RUNNER(crab::domain_impl::z_as_bool_num_t)
 Z_RUNNER(crab::domain_impl::z_ag_sdbm_intv_t)
 Z_RUNNER(crab::domain_impl::z_ag_num_null_t)
 
+Z_RUNNER(crab::domain_impl::wrapped_zones_t)
+Z_RUNNER(crab::domain_impl::wrapped_oct_t)
+Z_RUNNER(crab::domain_impl::wrapped_pk_t)
+
 Q_RUNNER(crab::domain_impl::q_interval_domain_t)
 Q_RUNNER(crab::domain_impl::q_pk_apron_domain_t)
-Q_RUNNER(crab::domain_impl::q_boxes_domain_t)  
+Q_RUNNER(crab::domain_impl::q_boxes_domain_t)
+
+

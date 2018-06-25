@@ -6,6 +6,7 @@
 #include <crab/domains/linear_constraints.hpp> 
 #include <crab/domains/intervals.hpp>
 #include <crab/domains/wrapped_interval_domain.hpp>
+#include <crab/domains/wrapped_domain_sk.hpp>
 #include <crab/domains/sparse_dbm.hpp>                      
 #include <crab/domains/split_dbm.hpp>
 #include <crab/domains/boxes.hpp>                      
@@ -64,6 +65,9 @@ namespace crab {
     typedef array_smashing<z_bool_num_domain_t> z_as_bool_num_t;
     // machine arithmetic domains
     typedef wrapped_interval_domain<ikos::z_number, varname_t> z_wrapped_interval_domain_t;
+    typedef wrapped_domain_sk<z_sdbm_domain_t> wrapped_zones_t;
+    typedef wrapped_domain_sk<z_oct_apron_domain_t> wrapped_oct_t;
+    typedef wrapped_domain_sk<z_pk_apron_domain_t> wrapped_pk_t;
     /// Numerical domains over rationals
     typedef interval_domain<ikos::q_number,varname_t > q_interval_domain_t;
     typedef apron_domain<ikos::q_number,varname_t,apron_domain_id_t::APRON_PK>
