@@ -100,22 +100,22 @@ namespace crab {
              */
 
             number_t get_signed_min(bitwidth_t bit) {
-                number_t signed_min= crab::wrapint::get_signed_min(bit).get_signed_bignum();
+                number_t signed_min = crab::wrapint::get_signed_min(bit).get_signed_bignum();
                 return signed_min;
             }
 
             number_t get_signed_max(bitwidth_t bit) {
-                number_t signed_max=crab::wrapint::get_signed_max(bit).get_signed_bignum();
+                number_t signed_max = crab::wrapint::get_signed_max(bit).get_signed_bignum();
                 return signed_max;
             }
 
             number_t get_unsigned_max(bitwidth_t bit) {
-                number_t unsigned_max=crab::wrapint::get_unsigned_max(bit).get_unsigned_bignum();
+                number_t unsigned_max = crab::wrapint::get_unsigned_max(bit).get_unsigned_bignum();
                 return unsigned_max;
             }
 
             number_t get_unsigned_min(bitwidth_t bit) {
-                number_t unsigned_min=crab::wrapint::get_unsigned_min(bit).get_unsigned_bignum();
+                number_t unsigned_min = crab::wrapint::get_unsigned_min(bit).get_unsigned_bignum();
                 return unsigned_min;
             }
 
@@ -193,8 +193,8 @@ namespace crab {
                     auto lb = *(var_interval.lb().number());
                     auto ub = *(var_interval.ub().number());
                     //compute  quadrant's indices
-                    lower_quad_index = (int)((lb - get_signed_min(bit)) / modulo);
-                    upper_quad_index = (int)((ub - get_signed_min(bit)) / modulo);
+                    lower_quad_index = (int) ((lb - get_signed_min(bit)) / modulo);
+                    upper_quad_index = (int) ((ub - get_signed_min(bit)) / modulo);
                     //CRAB_WARN("lower index upper index ", lower_quad_index, " ", upper_quad_index);
                 }
                 linear_constraint_system_t vars_bounds = get_var_bounds(var, is_signed);
