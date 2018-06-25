@@ -1,4 +1,10 @@
-
+/*******************************************************************************
+ *
+ * Implementation of Simon and King's method described in the paper:
+ * Taming the wrapping of integer arithmetic (SAS'07).
+ * Takes an arbritary numerical abstract domain sound wrt mathematical intergers
+ * and makes it sound wrt machine arithmetic
+ ******************************************************************************/
 #pragma once
 #include <iostream>
 #include <crab/common/wrapint.hpp>
@@ -48,10 +54,10 @@ namespace crab {
 
 
         private:
-            NumDom wrap_dom;
+            NumDom abs_num_dom;
         public:
 
-            wrapped_domain_sk(const NumDom& dom) : wrap_dom(dom) {
+            wrapped_domain_sk(const NumDom& dom) : abs_num_dom(dom) {
             }
 
             typedef interval_domain<number_t, varname_t> interval_domain_t;
@@ -71,6 +77,8 @@ namespace crab {
                 }
             };
 
+            //the newly created variable will have the same bit-width of the lexpr
+
             variable_t create_fresh_wrapped_int_var(linear_expression_t lexpr) {
                 //assuming that all the variables in the constraints has the same bit-width
                 variable_set_t vars = lexpr.variables();
@@ -80,155 +88,96 @@ namespace crab {
                 return var_new;
             }
 
-            /**this fuction is created only for renaming purpose**/
+            //this function is created only for renaming purpose
+
             variable_t create_fresh_int_var(variable_t var) {
                 variable_t var_new(var.name().get_var_factory().get(), var.get_type());
-
                 return var_new;
             }
 
-            // *********************utilities functions begin: TODO: move to a right place *********************************************
-
-            /*due to the implementation of get_signed_min, it should return - (value) for
-             correctness
-             FIXME
+            /*
+             FIXME: strange that signed 32 and 64 bits min and max are the same
              */
-            int64_t get_signed_min(bitwidth_t bit) {
 
-                return -(crab::wrapint::get_signed_min(bit).get_uint64_t());
+            number_t get_signed_min(bitwidth_t bit) {
+                number_t signed_min= crab::wrapint::get_signed_min(bit).get_signed_bignum();
+                return signed_min;
             }
 
-            uint64_t get_signed_max(bitwidth_t bit) {
-
-                return crab::wrapint::get_signed_max(bit).get_uint64_t();
+            number_t get_signed_max(bitwidth_t bit) {
+                number_t signed_max=crab::wrapint::get_signed_max(bit).get_signed_bignum();
+                return signed_max;
             }
 
-            uint64_t get_unsigned_max(bitwidth_t bit) {
-
-                return crab::wrapint::get_unsigned_max(bit).get_uint64_t();
+            number_t get_unsigned_max(bitwidth_t bit) {
+                number_t unsigned_max=crab::wrapint::get_unsigned_max(bit).get_unsigned_bignum();
+                return unsigned_max;
             }
 
-            uint64_t get_unsigned_min(bitwidth_t bit) {
-
-                return crab::wrapint::get_unsigned_min(bit).get_uint64_t();
+            number_t get_unsigned_min(bitwidth_t bit) {
+                number_t unsigned_min=crab::wrapint::get_unsigned_min(bit).get_unsigned_bignum();
+                return unsigned_min;
             }
 
             uint64_t get_modulo(bitwidth_t bit) {
-
                 return crab::wrapint::get_mod(bit);
             }
 
-            number_t wrap_num_2_fix_width(number_t nr, bitwidth_t bit, bool is_signed) {
-                uint64_t modulo = get_modulo(bit);
-                number_t res = nr % modulo;
-                bool nr_in_range;
-                if (is_signed) {
-                    nr_in_range = nr_within_bound(res, get_signed_min(bit), get_signed_max(bit));
-                } else {
-                    nr_in_range = nr_within_bound(res, get_unsigned_min(bit), get_unsigned_max(bit));
-                }
-
-                if (nr_in_range) {
-                    return res;
-                }
-                if (res < 0) {
-                    //underflow
-                    return number_t(res + modulo);
-                }
-                if (res > 0) {
-                    //overflow
-
-                    return number_t(res - modulo);
-                }
-                return res;
-            }
-
-            // *********************utilities functions end: TODO: move to a right place *********************************************
+            //returns bounding constraitns of a fixed width variable
 
             linear_constraint_system_t get_var_bounds(const variable_t var, bool is_signed) {
                 bitwidth_t bit = var.get_bitwidth();
                 linear_constraint_system_t vars_bounds;
                 if (is_signed) {
-                    vars_bounds += (var >= number_t(get_signed_min(bit))); //creates MIN<=var
-                    vars_bounds += (var <= number_t(get_signed_max(bit))); //creates var<=MAX
+                    vars_bounds += (var >= get_signed_min(bit)); //creates MIN<=var
+                    vars_bounds += (var <= get_signed_max(bit)); //creates var<=MAX
                 } else {
 
-                    vars_bounds += (var >= number_t(get_unsigned_min(bit))); //creates MIN<=var
-                    vars_bounds += (var <= number_t(get_unsigned_max(bit))); //creates var<=MAX
+                    vars_bounds += (var >= get_unsigned_min(bit)); //creates MIN<=var
+                    vars_bounds += (var <= get_unsigned_max(bit)); //creates var<=MAX
                 }
-
                 return vars_bounds;
             }
 
-            /*checks if there is an overflow before a branching condition, if so calls a wrapping operator.
-             * csts: is a branching condition
-             * pre: the second domain is non empty, csts is a single constraint
-             * 
-             * 
+            /* wraps variables and exprs of branch_cond in abs_num_dom to their correct ranges
              * FIXME: given a constraint E <=n, the expr returns E-n and const returns n
              * 
-             * TODO: now the constraints are in  E <=n form, it needs extension to E1<= E2, wrapping of constant on rhs
+             * TODO: now the constraints are in  E <=n form, it needs extension to E1<= E2
              */
             void wrap_cond_exprs(linear_constraint_t branch_cond, bool is_signed) {
-                if (this->wrap_dom.is_bottom()) return;
+                if (this->abs_num_dom.is_bottom()) return;
                 number_t rhs_const = branch_cond.constant();
                 //Given x+y<=1, expr is x+y-1 and const is 1
-                //the following is done to cope up with the normalisation of linear constraints
+                //the following is done to cope up with the normalisation of linear constraints in crab
                 linear_expression_t lhs_branch_cond = branch_cond.expression() + rhs_const;
-                //wrap rhs const and get a new system of constraints
                 bool is_variable_lhs = lhs_branch_cond.is_variable();
-                //CRAB_WARN(" before wrap ", this->wrap_dom);
                 if (is_variable_lhs) {
-                    //CRAB_WARN(lhs_branch_cond, " is var ");
                     wrap_single_var_SK(*(lhs_branch_cond.get_variable()), is_signed);
                 } else {
-                    //CRAB_WARN(lhs_branch_cond, " is expr ");
                     wrap_expr_SK(branch_cond, is_signed);
                 }
-                //CRAB_WARN(" after wrap ", this->wrap_dom);
             }
 
-            linear_constraint_t wrap_rhs_and_get_new_constr(linear_constraint_t branch_cond, bool is_signed) {
-                number_t rhs_const = branch_cond.constant();
-                linear_expression_t lhs_branch_cond = branch_cond.expression() + rhs_const;
-                number_t wrapped_rhs_const = wrap_const(branch_cond, rhs_const, is_signed);
-                if (rhs_const == wrapped_rhs_const) {
-                    //no wrapping of constant was done
-                    return branch_cond;
-                }
-                //form a new constraint system
-                linear_expression_t new_lhs_branch_expr = lhs_branch_cond - wrapped_rhs_const;
+            // wraps vars and exprs of branch_cond in abs_num_dom (enough to wrap the lhs due to crab normalisation)
 
-                return linear_constraint_t(new_lhs_branch_expr, branch_cond.kind());
-            }
-
-            number_t wrap_const(linear_constraint_t branch_cond, number_t rhs_const, bool is_signed) {
-                bitwidth_t bit = (*(branch_cond.variables().begin())).get_bitwidth();
-                return wrap_num_2_fix_width(rhs_const, bit, is_signed);
-            }
-
-            /*wraps a branching condition, for now only the left cond
-             */
             void wrap_expr_SK(linear_constraint_t branch_cond, bool is_signed) {
                 number_t rhs = branch_cond.constant();
                 linear_expression_t lhs = branch_cond.expression() + rhs;
-                //CRAB_WARN("expr ", lhs, " overflew");
                 variable_set_t lhs_vars = lhs.variables();
-                //wrap all vars
+                //wrap all vars before wrapping the expr
                 for (auto var : lhs_vars) {
                     wrap_single_var_SK(var, is_signed);
                 }
                 //wrap the expr
                 variable_t var_new = create_fresh_wrapped_int_var(lhs);
-                this->wrap_dom += (lhs == var_new);
+                this->abs_num_dom += (lhs == var_new);
                 wrap_single_var_SK(var_new, is_signed);
-                this->wrap_dom -= var_new;
+                this->abs_num_dom -= var_new;
             }
 
-            /*Simon and Kings method of wrapping a single variable
-             * the abstract domain that need to be wrapped is the numerical one (second)
+            /*Simon and Kings method of wrapping a single variable in a given numerical domain
              * threshold puts a limit on how many disjunctions to produce while wrapping
-             * TODO: move this threshold parameter to the top call
+             * TODO: move this threshold parameter to the top or provide as const
              */
 
             void wrap_single_var_SK(variable_t var, bool is_signed, int threshold = 16) {
@@ -236,43 +185,41 @@ namespace crab {
                 bitwidth_t bit = var.get_bitwidth();
                 uint64_t modulo = get_modulo(bit);
                 int lower_quad_index, upper_quad_index;
-                //TODO: pass as a parameter, move this code
-                to_intervals<NumDom> inv2(this->wrap_dom);
+                to_intervals<NumDom> inv2(this->abs_num_dom);
                 auto i_domain = inv2();
                 interval_t var_interval = i_domain[var];
                 //CRAB_WARN("var-interval ", var, " -", var_interval);
                 if (var_interval.lb().is_finite() && var_interval.ub().is_finite()) {
                     auto lb = *(var_interval.lb().number());
                     auto ub = *(var_interval.ub().number());
-                    //compute the quadrants
-                    lower_quad_index = (long(lb) - get_signed_min(bit)) / modulo;
-                    upper_quad_index = (long(ub) - get_signed_min(bit)) / modulo;
+                    //compute  quadrant's indices
+                    lower_quad_index = (int)((lb - get_signed_min(bit)) / modulo);
+                    upper_quad_index = (int)((ub - get_signed_min(bit)) / modulo);
                     //CRAB_WARN("lower index upper index ", lower_quad_index, " ", upper_quad_index);
                 }
                 linear_constraint_system_t vars_bounds = get_var_bounds(var, is_signed);
 
                 if (!var_interval.lb().is_finite() || !var_interval.ub().is_finite() || (upper_quad_index - lower_quad_index) > threshold) {
-                    this->wrap_dom -= var;
-                    //conjoining variable bounds
-                    this->wrap_dom += vars_bounds;
+                    this->abs_num_dom -= var;
+                    //set to full range 
+                    this->abs_num_dom += vars_bounds;
                 } else {
+                    //shift and join quadrants (induced by the indices)
                     if ((upper_quad_index == 0) && (lower_quad_index == 0)) {
+                        //no shifting and joining is needed since shifting produces the same single domain 
                         return;
                     } else {
                         NumDom res = NumDom::bottom();
                         //shift and join quadrants
                         for (int i = lower_quad_index; i <= upper_quad_index; i++) {
-                            NumDom numerical_domain = this->wrap_dom;
+                            NumDom numerical_domain = this->abs_num_dom;
                             if (i != 0) {
-                                //CRAB_WARN("numerical  domain before replacement ", numerical_domain);
                                 numerical_domain = update_var_in_domain(numerical_domain, var, i, modulo);
-                                //CRAB_WARN("after replacement ", numerical_domain);
                             }
-
                             numerical_domain += vars_bounds;
                             res |= numerical_domain; //join all the quadrants
                         }
-                        this->wrap_dom = res;
+                        this->abs_num_dom = res;
                     }
 
                 }
@@ -289,17 +236,15 @@ namespace crab {
                 //renaming var within the given abstract element
                 variable_vector_t frm_vars, to_vars;
                 frm_vars.push_back(var);
-                //create a fresh variable, no need for a wrap-int variable since we are operating on domain2
+                //create a fresh variable, no need for a wrap-int variable since we are operating on a domain
+                //that does not understand bounded vars
                 variable_t var_new = create_fresh_int_var(var);
                 to_vars.push_back(var_new);
-                //CRAB_WARN("about to rename ", var, " to ", var_new, " domain ", numerical_domain);
                 numerical_domain.rename(frm_vars, to_vars);
-                //CRAB_WARN("after renaming   domain ", numerical_domain);
                 //expression to update var with
                 linear_expression_t modulo_expr(modulo);
                 linear_expression_t rhs_expr = quotient * modulo_expr;
                 rhs_expr = var_new - rhs_expr;
-                //CRAB_WARN("exprssion to update with ", t);
                 numerical_domain += (var == rhs_expr);
                 //project out var_new
                 numerical_domain -= var_new;
@@ -319,56 +264,56 @@ namespace crab {
 
         public:
 
-            wrapped_domain_sk() : wrap_dom() {
+            wrapped_domain_sk() : abs_num_dom() {
             }
 
-            wrapped_domain_sk(const wrapped_numerical_domain_t & other) : wrap_dom(other.wrap_dom) {
+            wrapped_domain_sk(const wrapped_numerical_domain_t & other) : abs_num_dom(other.abs_num_dom) {
             }
 
             wrapped_numerical_domain_t& operator=(const wrapped_numerical_domain_t & other) {
                 if (this != &other) {
-                    this->wrap_dom = other.wrap_dom;
+                    this->abs_num_dom = other.abs_num_dom;
                 }
                 return *this;
             }
 
             bool is_bottom() {
 
-                return this->wrap_dom.is_bottom();
+                return this->abs_num_dom.is_bottom();
             }
 
             bool is_top() {
 
-                return this->wrap_dom.is_top();
+                return this->abs_num_dom.is_top();
             }
 
             bool operator<=(wrapped_numerical_domain_t other) {
 
-                return (this->wrap_dom <= other.wrap_dom);
+                return (this->abs_num_dom <= other.abs_num_dom);
             }
 
             bool operator==(wrapped_numerical_domain_t other) {
 
-                return (this->wrap_dom == other.wrap_dom);
+                return (this->abs_num_dom == other.abs_num_dom);
             }
 
             void operator|=(wrapped_numerical_domain_t other) {
 
-                this->wrap_dom |= other.wrap_dom;
+                this->abs_num_dom |= other.abs_num_dom;
             }
 
             wrapped_numerical_domain_t operator|(wrapped_numerical_domain_t other) {
 
-                return wrapped_numerical_domain_t(this->wrap_dom | other.wrap_dom);
+                return wrapped_numerical_domain_t(this->abs_num_dom | other.abs_num_dom);
             }
 
             wrapped_numerical_domain_t operator&(wrapped_numerical_domain_t other) {
 
-                return wrapped_numerical_domain_t(this->wrap_dom & other.wrap_dom);
+                return wrapped_numerical_domain_t(this->abs_num_dom & other.abs_num_dom);
             }
 
             wrapped_numerical_domain_t operator||(wrapped_numerical_domain_t other) {
-                wrapped_numerical_domain_t res(this->wrap_dom || other.wrap_dom);
+                wrapped_numerical_domain_t res(this->abs_num_dom || other.abs_num_dom);
 
                 return res;
             }
@@ -377,17 +322,17 @@ namespace crab {
             wrapped_numerical_domain_t widening_thresholds(wrapped_numerical_domain_t other,
                     const Thresholds & ts) {
 
-                return wrapped_numerical_domain_t(this->wrap_dom.widening_thresholds(other.wrap_dom, ts));
+                return wrapped_numerical_domain_t(this->abs_num_dom.widening_thresholds(other.abs_num_dom, ts));
             }
 
             wrapped_numerical_domain_t operator&&(wrapped_numerical_domain_t other) {
 
-                return wrapped_numerical_domain_t(this->wrap_dom && other.wrap_dom);
+                return wrapped_numerical_domain_t(this->abs_num_dom && other.abs_num_dom);
             }
 
             void assign(variable_t x, linear_expression_t e) {
 
-                this->wrap_dom.assign(x, e);
+                this->abs_num_dom.assign(x, e);
 
             }
 
@@ -397,7 +342,7 @@ namespace crab {
                     safen(y, true);
                     safen(z, true);
                 }
-                this->wrap_dom.apply(op, x, y, z);
+                this->abs_num_dom.apply(op, x, y, z);
 
             }
 
@@ -406,24 +351,24 @@ namespace crab {
                     // signed division
                     safen(y, true);
                 }
-                this->wrap_dom.apply(op, x, y, k);
+                this->abs_num_dom.apply(op, x, y, k);
 
             }
 
             void set(variable_t v, interval_t x) {
 
-                this->wrap_dom.set(v, x);
+                this->abs_num_dom.set(v, x);
             }
 
             interval_t operator[](variable_t v) {
 
-                return this->wrap_dom[v];
+                return this->abs_num_dom[v];
             }
 
             virtual void backward_assign(variable_t x, linear_expression_t e,
                     wrapped_numerical_domain_t invariant) {
 
-                this->wrap_dom.backward_assign(x, e, invariant.wrap_dom);
+                this->abs_num_dom.backward_assign(x, e, invariant.abs_num_dom);
 
             }
 
@@ -431,21 +376,20 @@ namespace crab {
                     variable_t x, variable_t y, number_t k,
                     wrapped_numerical_domain_t invariant) {
 
-                this->wrap_dom.backward_apply(op, x, y, k, invariant.wrap_dom);
+                this->abs_num_dom.backward_apply(op, x, y, k, invariant.abs_num_dom);
             }
 
             virtual void backward_apply(operation_t op,
                     variable_t x, variable_t y, variable_t z,
                     wrapped_numerical_domain_t invariant) {
 
-                this->wrap_dom.backward_apply(op, x, y, z, invariant.wrap_dom);
+                this->abs_num_dom.backward_apply(op, x, y, z, invariant.abs_num_dom);
             }
 
             /*assume that the call to this operator is only coming from an assume  statement (branch/conditional)*/
             void operator+=(linear_constraint_system_t csts) {
-                //bool is_singed = signed_world();
                 if (csts.is_false()) {
-                    this->wrap_dom += csts;
+                    this->abs_num_dom += csts;
                     return;
                 }
                 for (auto cst : csts) {
@@ -454,9 +398,11 @@ namespace crab {
                         wrap_cond_exprs(cst, is_singed);
                     }
                 }
-                //safe to add constraints
-                this->wrap_dom += csts;
+                //safe to add constraints since all vars and exprs of csts are set to their bounds
+                this->abs_num_dom += csts;
             }
+
+            //note that we assume the default is signed
 
             bool is_signed_cmp(const linear_constraint_t & cst) {
                 bool is_singed = true; //default
@@ -466,24 +412,26 @@ namespace crab {
                 return is_singed;
             }
 
-            /** wraps a variable to its range, this is needed for all that does not commute with the modulo
-              (branches, div, and rem).
-             * */
+            /* produces a wrapped value of a variable. This need to be called by all operations 
+             that do not commute with the modulo (branches, div, and rem).
+             */
 
             void safen(const variable_t& v, bool is_signed) {
+                //abs_num_dom -=v; //this loses a lot of precision
                 wrap_single_var_SK(v, is_signed);
+
             }
 
             void operator-=(variable_t v) {
 
-                this->wrap_dom -= v;
+                this->abs_num_dom -= v;
             }
 
             // cast_operators_api
 
             void apply(int_conv_operation_t op, variable_t dst, variable_t src) {
 
-                this->wrap_dom.apply(op, dst, src);
+                this->abs_num_dom.apply(op, dst, src);
 
             }
 
@@ -491,13 +439,13 @@ namespace crab {
 
             void apply(bitwise_operation_t op, variable_t x, variable_t y, variable_t z) {
 
-                this->wrap_dom.apply(op, x, y, z);
+                this->abs_num_dom.apply(op, x, y, z);
 
             }
 
             void apply(bitwise_operation_t op, variable_t x, variable_t y, number_t k) {
 
-                this->wrap_dom.apply(op, x, y, k);
+                this->abs_num_dom.apply(op, x, y, k);
 
             }
 
@@ -508,9 +456,9 @@ namespace crab {
                 safen(z, (op == OP_SDIV || op == OP_SREM) ? true : false);
                 if (op == OP_UDIV || op == OP_UREM) {
                     // if unsigned division then we only apply it on wrapped intervals
-                    this->wrap_dom.apply(op, x, y, z);
+                    this->abs_num_dom.apply(op, x, y, z);
                 } else {
-                    this->wrap_dom.apply(op, x, y, z);
+                    this->abs_num_dom.apply(op, x, y, z);
                 }
             }
 
@@ -518,9 +466,9 @@ namespace crab {
                 safen(y, (op == OP_SDIV || op == OP_SREM) ? true : false);
                 if (op == OP_UDIV || op == OP_UREM) {
                     // if unsigned division then we only apply it on wrapped intervals
-                    this->wrap_dom.apply(op, x, y, k);
+                    this->abs_num_dom.apply(op, x, y, k);
                 } else {
-                    this->wrap_dom.apply(op, x, y, k);
+                    this->abs_num_dom.apply(op, x, y, k);
                 }
 
             }
@@ -532,14 +480,14 @@ namespace crab {
                     linear_expression_t ub_idx,
                     linear_expression_t val) override {
 
-                this->wrap_dom.array_assume(a, lb_idx, ub_idx, val);
+                this->abs_num_dom.array_assume(a, lb_idx, ub_idx, val);
 
             }
 
             virtual void array_load(variable_t lhs, variable_t a,
                     linear_expression_t i, ikos::z_number bytes) override {
 
-                this->wrap_dom.array_load(lhs, a, i, bytes);
+                this->abs_num_dom.array_load(lhs, a, i, bytes);
             }
 
             virtual void array_store(variable_t a,
@@ -548,12 +496,12 @@ namespace crab {
                     ikos::z_number bytes,
                     bool is_singleton) override {
 
-                this->wrap_dom.array_store(a, i, val, bytes, is_singleton);
+                this->abs_num_dom.array_store(a, i, val, bytes, is_singleton);
             }
 
             virtual void array_assign(variable_t lhs, variable_t rhs) override {
 
-                this->wrap_dom.array_assign(lhs, rhs);
+                this->abs_num_dom.array_assign(lhs, rhs);
 
             }
             // Ignored pointer_operators_api
@@ -562,27 +510,27 @@ namespace crab {
 
             virtual void assign_bool_cst(variable_t lhs, linear_constraint_t rhs) override {
 
-                this->wrap_dom.assign_bool_cst(lhs, rhs);
+                this->abs_num_dom.assign_bool_cst(lhs, rhs);
 
             }
 
             virtual void assign_bool_var(variable_t lhs, variable_t rhs,
                     bool is_not_rhs) override {
 
-                this->wrap_dom.assign_bool_var(lhs, rhs, is_not_rhs);
+                this->abs_num_dom.assign_bool_var(lhs, rhs, is_not_rhs);
 
             }
 
             virtual void apply_binary_bool(bool_operation_t op, variable_t x,
                     variable_t y, variable_t z) override {
 
-                this->wrap_dom.apply_binary_bool(op, x, y, z);
+                this->abs_num_dom.apply_binary_bool(op, x, y, z);
 
             }
 
             virtual void assume_bool(variable_t v, bool is_negated) override {
 
-                this->wrap_dom.assume_bool(v, is_negated);
+                this->abs_num_dom.assume_bool(v, is_negated);
             }
 
             // backward boolean operators
@@ -590,14 +538,14 @@ namespace crab {
             virtual void backward_assign_bool_cst(variable_t lhs, linear_constraint_t rhs,
                     wrapped_numerical_domain_t inv) {
 
-                this->wrap_dom.backward_assign_bool_cst(lhs, rhs, inv.wrap_dom);
+                this->abs_num_dom.backward_assign_bool_cst(lhs, rhs, inv.abs_num_dom);
 
             }
 
             virtual void backward_assign_bool_var(variable_t lhs, variable_t rhs, bool is_not_rhs,
                     wrapped_numerical_domain_t inv) {
 
-                this->wrap_dom.backward_assign_bool_var(lhs, rhs, is_not_rhs, inv.wrap_dom);
+                this->abs_num_dom.backward_assign_bool_var(lhs, rhs, is_not_rhs, inv.abs_num_dom);
 
             }
 
@@ -605,13 +553,13 @@ namespace crab {
                     variable_t x, variable_t y, variable_t z,
                     wrapped_numerical_domain_t inv) {
 
-                this->wrap_dom.backward_apply_binary_bool(op, x, y, z, inv.wrap_dom);
+                this->abs_num_dom.backward_apply_binary_bool(op, x, y, z, inv.abs_num_dom);
 
             }
 
             linear_constraint_system_t to_linear_constraint_system() {
                 linear_constraint_system_t csts;
-                csts += this->wrap_dom.to_linear_constraint_system();
+                csts += this->abs_num_dom.to_linear_constraint_system();
 
                 return csts;
             }
@@ -619,18 +567,18 @@ namespace crab {
             virtual void rename(const variable_vector_t& from,
                     const variable_vector_t & to) override {
 
-                this->wrap_dom.rename(from, to);
+                this->abs_num_dom.rename(from, to);
 
             }
 
             void write(crab::crab_os & o) {
 
-                this->wrap_dom.write(o);
+                this->abs_num_dom.write(o);
             }
 
             static std::string getDomainName() {
 
-                return "SK-Wrapped-" + NumDom::getDomainName();
+                return "SK-Wrapped" + NumDom::getDomainName();
             }
 
             // domain_traits_api
@@ -638,27 +586,27 @@ namespace crab {
             void expand(variable_t x, variable_t new_x) {
 
                 crab::domains::domain_traits<NumDom>::
-                        expand(this->wrap_dom, x, new_x);
+                        expand(this->abs_num_dom, x, new_x);
             }
 
             void normalize() {
 
                 crab::domains::domain_traits<NumDom>::
-                        normalize(this->wrap_dom);
+                        normalize(this->abs_num_dom);
             }
 
             template <typename Range>
             void forget(Range vars) {
 
                 crab::domains::domain_traits<NumDom>::
-                        forget(this->wrap_dom, vars.begin(), vars.end());
+                        forget(this->abs_num_dom, vars.begin(), vars.end());
             }
 
             template <typename Range>
             void project(Range vars) {
 
                 crab::domains::domain_traits<NumDom>::
-                        project(this->wrap_dom, vars.begin(), vars.end());
+                        project(this->abs_num_dom, vars.begin(), vars.end());
             }
         }; // class wrapped_domain_sk
 
