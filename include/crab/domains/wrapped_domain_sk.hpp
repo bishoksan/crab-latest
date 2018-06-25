@@ -2,7 +2,7 @@
  *
  * Implementation of Simon and King's method described in the paper:
  * Taming the wrapping of integer arithmetic (SAS'07).
- * Takes an arbritary numerical abstract domain sound wrt mathematical intergers
+ * Takes an arbritrary numerical abstract domain sound wrt mathematical integers
  * and makes it sound wrt machine arithmetic
  ******************************************************************************/
 #pragma once
