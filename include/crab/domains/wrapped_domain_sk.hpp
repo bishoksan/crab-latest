@@ -139,6 +139,8 @@ namespace crab {
             // wraps vars and exprs of branch_cond in abs_num_dom (enough to wrap the lhs due to crab normalisation)
 
             void wrap_expr_SK(linear_constraint_t branch_cond, bool is_signed) {
+                crab::CrabStats::count(getDomainName() + ".count.expr-wrapping");
+                crab::ScopedCrabStats __st__(getDomainName() + ".expr-wrapping");
                 number_t rhs = branch_cond.constant();
                 linear_expression_t lhs = branch_cond.expression() + rhs;
                 const variable_set_t &lhs_vars = lhs.variables();
@@ -159,7 +161,10 @@ namespace crab {
              */
 
             void wrap_single_var_SK(variable_t var, bool is_signed, int threshold = 16) {
-                //CRAB_WARN("wrap_single_var_SK CALLED, second ", second);
+                crab::CrabStats::count(getDomainName() + ".count.var-wrapping");
+                crab::ScopedCrabStats __st__(getDomainName() + ".var-wrapping");
+                CRAB_LOG(getDomainName(),
+                        crab::outs() << "wrapping " << var << " from " << abs_num_dom << " gives ");
                 bitwidth_t bit = var.get_bitwidth();
                 uint64_t modulo = get_modulo(bit);
                 int lower_quad_index, upper_quad_index;
@@ -183,6 +188,7 @@ namespace crab {
                     //shift and join quadrants (induced by the indices)
                     if ((upper_quad_index == 0) && (lower_quad_index == 0)) {
                         //no shifting and joining is needed since shifting produces the same single domain 
+                       CRAB_LOG(getDomainName(), crab::outs() << abs_num_dom << "\n";);
                         return;
                     } else {
                         NumDom res = NumDom::bottom();
@@ -197,7 +203,7 @@ namespace crab {
                         }
                         this->abs_num_dom = res;
                     }
-
+                     CRAB_LOG(getDomainName(), crab::outs() << abs_num_dom << "\n";);
                 }
             }
 
@@ -208,7 +214,8 @@ namespace crab {
              */
 
             NumDom& update_var_in_domain(NumDom& numerical_domain, variable_t var, int quotient, number_t modulo) {
-                //rename a vector of variables  to another set of vectors
+                crab::CrabStats::count(getDomainName() + ".count.var_update");
+                crab::ScopedCrabStats __st__(getDomainName() + ".var_update");
                 //renaming var within the given abstract element
                 variable_vector_t frm_vars, to_vars;
                 frm_vars.push_back(var);
@@ -216,14 +223,17 @@ namespace crab {
                 //that does not understand bounded vars
                 variable_t var_new = create_fresh_int_var(var);
                 to_vars.push_back(var_new);
-                numerical_domain.rename(frm_vars, to_vars);
-                //expression to update var with
                 linear_expression_t modulo_expr(modulo);
                 linear_expression_t rhs_expr = quotient * modulo_expr;
+                CRAB_LOG(getDomainName(),
+                        crab::outs() <<"update " << var << " with " << var << " - "<< rhs_expr<< " in \n"<< numerical_domain);
+                //update var with rhs_expr
                 rhs_expr = var_new - rhs_expr;
+                numerical_domain.rename(frm_vars, to_vars);
                 numerical_domain += (var == rhs_expr);
                 //project out var_new
                 numerical_domain -= var_new;
+                CRAB_LOG(getDomainName(), crab::outs() << numerical_domain << "\n";);
                 return numerical_domain;
             }
 
