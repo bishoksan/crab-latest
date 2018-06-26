@@ -52,7 +52,6 @@ namespace crab {
             typedef typename variable_t::bitwidth_t bitwidth_t;
             typedef bound<number_t> bound_t;
 
-
         private:
             NumDom abs_num_dom;
         public:
@@ -60,31 +59,10 @@ namespace crab {
             wrapped_domain_sk(const NumDom& dom) : abs_num_dom(dom) {
             }
 
-            typedef interval_domain<number_t, varname_t> interval_domain_t;
+            //the newly created variable will have the same bit-width of var
 
-            template<typename Dom>
-            class to_intervals {
-                Dom m_inv;
-            public:
-
-                to_intervals(Dom &inv) : m_inv(inv) {
-                }
-
-                interval_domain_t operator()() {
-                    interval_domain_t res;
-                    res += m_inv.to_linear_constraint_system();
-                    return res;
-                }
-            };
-
-            //the newly created variable will have the same bit-width of the lexpr
-
-            variable_t create_fresh_wrapped_int_var(linear_expression_t lexpr) {
-                //assuming that all the variables in the constraints has the same bit-width
-                variable_set_t vars = lexpr.variables();
-                variable_t var = *(vars.begin());
+            variable_t create_fresh_wrapped_int_var(variable_t var) {
                 variable_t var_new(var.name().get_var_factory().get(), var.get_type(), var.get_bitwidth());
-
                 return var_new;
             }
 
@@ -163,13 +141,13 @@ namespace crab {
             void wrap_expr_SK(linear_constraint_t branch_cond, bool is_signed) {
                 number_t rhs = branch_cond.constant();
                 linear_expression_t lhs = branch_cond.expression() + rhs;
-                variable_set_t lhs_vars = lhs.variables();
+                const variable_set_t &lhs_vars = lhs.variables();
                 //wrap all vars before wrapping the expr
                 for (auto var : lhs_vars) {
                     wrap_single_var_SK(var, is_signed);
                 }
                 //wrap the expr
-                variable_t var_new = create_fresh_wrapped_int_var(lhs);
+                variable_t var_new = create_fresh_wrapped_int_var(*(lhs_vars.begin()));
                 this->abs_num_dom += (lhs == var_new);
                 wrap_single_var_SK(var_new, is_signed);
                 this->abs_num_dom -= var_new;
@@ -185,9 +163,7 @@ namespace crab {
                 bitwidth_t bit = var.get_bitwidth();
                 uint64_t modulo = get_modulo(bit);
                 int lower_quad_index, upper_quad_index;
-                to_intervals<NumDom> inv2(this->abs_num_dom);
-                auto i_domain = inv2();
-                interval_t var_interval = i_domain[var];
+                interval_t var_interval = abs_num_dom[var];
                 //CRAB_WARN("var-interval ", var, " -", var_interval);
                 if (var_interval.lb().is_finite() && var_interval.ub().is_finite()) {
                     auto lb = *(var_interval.lb().number());
