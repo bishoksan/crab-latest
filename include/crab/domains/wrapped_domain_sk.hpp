@@ -101,7 +101,7 @@ namespace crab {
                 return crab::wrapint::get_mod(bit);
             }
 
-            //returns bounding constraitns of a fixed width variable
+            //returns bounding constraints of a fixed width variable
 
             linear_constraint_system_t get_var_bounds(const variable_t var, bool is_signed) {
                 bitwidth_t bit = var.get_bitwidth();
@@ -122,14 +122,13 @@ namespace crab {
              * 
              * TODO: now the constraints are in  E <=n form, it needs extension to E1<= E2
              */
-            void wrap_cond_exprs(linear_constraint_t branch_cond, bool is_signed) {
+            void wrap_cond_exprs(const linear_constraint_t &branch_cond, bool is_signed) {
                 if (this->abs_num_dom.is_bottom()) return;
                 number_t rhs_const = branch_cond.constant();
                 //Given x+y<=1, expr is x+y-1 and const is 1
                 //the following is done to cope up with the normalisation of linear constraints in crab
                 linear_expression_t lhs_branch_cond = branch_cond.expression() + rhs_const;
-                bool is_variable_lhs = lhs_branch_cond.is_variable();
-                if (is_variable_lhs) {
+                if (lhs_branch_cond.is_variable()) {
                     wrap_single_var_SK(*(lhs_branch_cond.get_variable()), is_signed);
                 } else {
                     wrap_expr_SK(branch_cond, is_signed);
@@ -138,7 +137,7 @@ namespace crab {
 
             // wraps vars and exprs of branch_cond in abs_num_dom (enough to wrap the lhs due to crab normalisation)
 
-            void wrap_expr_SK(linear_constraint_t branch_cond, bool is_signed) {
+            void wrap_expr_SK(const linear_constraint_t &branch_cond, bool is_signed) {
                 crab::CrabStats::count(getDomainName() + ".count.expr-wrapping");
                 crab::ScopedCrabStats __st__(getDomainName() + ".expr-wrapping");
                 number_t rhs = branch_cond.constant();
