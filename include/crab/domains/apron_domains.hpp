@@ -836,9 +836,15 @@ namespace crab {
 	    auto intv_widen = intv_this.widening_thresholds (intv_o, ts);	    
 	    
 	    // refine the apron domain using the widen intervals
+#if 0 //this part caused non-termination in some programs using Octagons
 	    apron_domain_t apron_intv_widen;
 	    apron_intv_widen += intv_widen.to_linear_constraint_system ();
+            crab::outs()<<"apron widen \n "<< res<<"\n";
+            crab::outs()<<"interval widen \n "<< apron_intv_widen<<"\n";
 	    return res & apron_intv_widen;
+#else
+            return res;
+#endif
 	    #else
 	    ap_lincons0_array_t csts = make_thresholds (o, ts);
             apron_domain_t res (apPtr (get_man(), 
